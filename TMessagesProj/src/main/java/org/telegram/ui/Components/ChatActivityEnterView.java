@@ -108,6 +108,7 @@ import com.exteragram.messenger.boost.BoostController;
 import com.exteragram.messenger.boost.encryption.EncryptionHelper;
 import com.exteragram.messenger.utils.ChatUtils;
 import com.exteragram.messenger.utils.PopupUtils;
+import com.exteragram.messenger.utils.QuickReplyUtils;
 import com.exteragram.messenger.utils.TranslatorUtils;
 import com.radolyn.ayugram.AyuConfig;
 import com.radolyn.ayugram.utils.AyuState;
@@ -1990,6 +1991,13 @@ public class ChatActivityEnterView extends BlurredFrameLayout implements Notific
                     openKeyboardInternal();
                 }
             }
+        });
+        emojiButton.setOnLongClickListener(v -> {
+            if (parentActivity == null || messageEditText == null || isEditingMessage()) {
+                return false;
+            }
+            QuickReplyUtils.showPicker(parentActivity, messageEditText, currentAccount, dialog_id, resourcesProvider);
+            return true;
         });
         messageEditTextContainer.addView(emojiButton, LayoutHelper.createFrame(48, 48, Gravity.BOTTOM | Gravity.LEFT, 3, 0, 0, 0));
         setEmojiButtonImage(false, false);

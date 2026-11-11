@@ -103,4 +103,5 @@
   <string name="SecretMessageTecno">Tecno phones are the best.</string>
   <string name="SecretMessageXiaomiSuccess">You\'re using a good phone.</string>
   <string name="SecretMessageXiaomiFailure">Install custom ROM.</string>
+  <string name="PlayerQueue">Queue</string>
 </resources>

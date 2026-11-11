@@ -4066,7 +4066,17 @@ public class Theme {
 
         fallbackKeys.put(key_chat_inAdminText, key_chat_inTimeText);
         fallbackKeys.put(key_chat_inAdminSelectedText, key_chat_inTimeSelectedText);
+        fallbackKeys.put(key_player_actionBarSelector, key_listSelector);
+        fallbackKeys.put(key_player_actionBarTitle, key_windowBackgroundWhiteBlackText);
+        fallbackKeys.put(key_player_actionBarSubtitle, key_windowBackgroundWhiteGrayText);
+        fallbackKeys.put(key_player_actionBarItems, key_windowBackgroundWhiteGrayIcon);
+        fallbackKeys.put(key_player_background, key_dialogBackground);
+        fallbackKeys.put(key_player_time, key_windowBackgroundWhiteGrayText);
+        fallbackKeys.put(key_player_progressBackground, key_windowBackgroundGray);
         fallbackKeys.put(key_player_progressCachedBackground, key_player_progressBackground);
+        fallbackKeys.put(key_player_progress, key_windowBackgroundWhiteBlueText);
+        fallbackKeys.put(key_player_button, key_windowBackgroundWhiteBlackText);
+        fallbackKeys.put(key_player_buttonActive, key_windowBackgroundWhiteBlueText);
         fallbackKeys.put(key_chat_inAudioCacheSeekbar, key_chat_inAudioSeekbar);
         fallbackKeys.put(key_chat_outAudioCacheSeekbar, key_chat_outAudioSeekbar);
         fallbackKeys.put(key_chat_emojiSearchBackground, key_chat_emojiPanelStickerPackSelector);

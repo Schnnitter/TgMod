@@ -3244,7 +3244,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
 
     private boolean checkTextSelection(MotionEvent event) {
         TextSelectionHelper.ChatListTextSelectionHelper textSelectionHelper = delegate.getTextSelectionHelper();
-        if (textSelectionHelper == null || MessagesController.getInstance(currentAccount).isChatNoForwards(currentMessageObject.getChatId()) || (currentMessageObject.messageOwner != null && currentMessageObject.messageOwner.noforwards)) {
+        if (textSelectionHelper == null) {
             return false;
         }
         boolean hasTextBlocks = currentMessageObject.textLayoutBlocks != null && !currentMessageObject.textLayoutBlocks.isEmpty();
@@ -4280,7 +4280,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             drawVideoSize = false;
             canStreamVideo = false;
             animatingNoSound = 0;
-            if (MessagesController.getInstance(currentAccount).isChatNoForwards(messageObject.getChatId()) || (messageObject.messageOwner != null && messageObject.messageOwner.noforwards)) {
+            if (MessagesController.getInstance(currentAccount).isChatNoForwards(messageObject.getChatId())) {
                 drawSideButton = 0;
             } else {
                 drawSideButton = !isRepliesChat && checkNeedDrawShareButton(messageObject) && (currentPosition == null || currentPosition.last) ? 1 : 0;
@@ -7874,7 +7874,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             Activity activity = AndroidUtilities.findActivity(getContext());
             Window window = activity == null ? null : activity.getWindow();
             if (window != null) {
-                flagSecure = new FlagSecureReason(window, () -> currentMessageObject != null && currentMessageObject.messageOwner != null && (currentMessageObject.messageOwner.noforwards || currentMessageObject.hasRevealedExtendedMedia()));
+                flagSecure = new FlagSecureReason(window, () -> currentMessageObject != null && currentMessageObject.messageOwner != null && currentMessageObject.hasRevealedExtendedMedia());
                 if (attachedToWindow) {
                     flagSecure.attach();
                 }

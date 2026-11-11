@@ -9535,7 +9535,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         @Override
                         public void onClick(@NonNull View view) {
                             String urlFinal = getMessagesController().linkPrefix + "/" + usernameRaw;
-                            if (currentChat == null || !currentChat.noforwards) {
+                            if (currentChat == null || MessagesController.EXTERA_IGNORE_CONTENT_PROTECTION || !currentChat.noforwards) {
                                 AndroidUtilities.addToClipboard(urlFinal);
                                 undoView.showWithAction(0, UndoView.ACTION_USERNAME_COPIED, null);
                             }

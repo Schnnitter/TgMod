@@ -107,6 +107,8 @@ import androidx.viewpager.widget.ViewPager;
 import com.exteragram.messenger.ExteraConfig;
 import com.exteragram.messenger.components.MessageDetailsPopupWrapper;
 import com.exteragram.messenger.utils.ChatUtils;
+import com.exteragram.messenger.utils.ChatNotesUtils;
+import com.exteragram.messenger.utils.MessageBookmarkUtils;
 import com.exteragram.messenger.utils.SystemUtils;
 import com.exteragram.messenger.boost.BoostController;
 import com.exteragram.messenger.boost.encryption.EncryptionHelper;
@@ -985,6 +987,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
     private final static int OPTION_DECRYPT = 203;
     private final static int OPTION_DETAILS = 204;
     private final static int OPTION_HISTORY = 205;
+    private final static int OPTION_BOOKMARK = 206;
 
     private final static int[] allowedNotificationsDuringChatListAnimations = new int[]{
             AyuConstants.MESSAGES_DELETED_NOTIFICATION,
@@ -1298,6 +1301,8 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
     private final static int bot_settings = 31;
     private final static int call = 32;
     private final static int video_call = 33;
+    private final static int chat_note = 34;
+    private final static int chat_bookmarks = 35;
 
     private final static int attach_photo = 0;
     private final static int attach_gallery = 1;
@@ -1522,7 +1527,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
             } else {
                 MessageObject message = cell.getMessageObject();
                 MessageObject.GroupedMessages messageGroup = getValidGroupedMessage(message);
-                boolean noForwards = getMessagesController().isChatNoForwards(currentChat) || message.messageOwner.noforwards;
+                boolean noForwards = false; // TgMod: content protection bypass
                 boolean allowChatActions = chatMode != MODE_SCHEDULED && (threadMessageObjects == null || !threadMessageObjects.contains(message)) &&
                         !message.isSponsored() && (getMessageType(message) != 1 || message.getDialogId() != mergeDialogId) &&
                         !(message.messageOwner.action instanceof TLRPC.TL_messageActionSecureValuesSent) &&
@@ -3066,6 +3071,15 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                     }
                 } else if (id == to_beginning) {
                     scrollToMessageId(1, 0, false, 0, true, 0);
+                } else if (id == chat_note) {
+                    if (getParentActivity() != null) {
+                        ChatNotesUtils.showEditor(getParentActivity(), currentAccount, dialog_id, themeDelegate);
+                    }
+                } else if (id == chat_bookmarks) {
+                    if (getParentActivity() != null) {
+                        MessageBookmarkUtils.showBookmarks(getParentActivity(), currentAccount, dialog_id, themeDelegate,
+                                messageId -> scrollToMessageId(messageId, 0, false, 0, true, 0));
+                    }
                 } else if (id == show_pinned) {
                     setPinVisibility(true);
                 } else if (id == recent_actions) {
@@ -3258,6 +3272,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
             avatarContainer.onDestroy();
         }
         avatarContainer = new ChatAvatarContainer(context, this, currentEncryptedChat != null, themeDelegate);
+        avatarContainer.setTitleCentered(ExteraConfig.centerTitle);
         avatarContainer.allowShorterStatus = true;
         avatarContainer.premiumIconHiddable = true;
         avatarContainer.setOnLongClickListener(v -> {
@@ -3337,7 +3352,9 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
             });
             getConnectionsManager().bindRequestToGuid(req, classGuid);
         } else {
-            actionBar.addView(avatarContainer, 0, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT, Gravity.TOP | Gravity.LEFT, !inPreviewMode ? 56 : (chatMode == MODE_PINNED ? 10 : 0), 0, 40, 0));
+            int sideMargin = !inPreviewMode ? 56 : (chatMode == MODE_PINNED ? 10 : 0);
+            int rightMargin = ExteraConfig.centerTitle ? sideMargin : 40;
+            actionBar.addView(avatarContainer, 0, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.TOP | Gravity.LEFT, sideMargin, 0, rightMargin, 0));
         }
 
         ActionBarMenu menu = actionBar.createMenu();
@@ -3482,6 +3499,8 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
             if (searchItem != null) {
                 headerItem.lazilyAddSubItem(search, R.drawable.msg_search, LocaleController.getString("Search", R.string.Search));
             }
+            headerItem.lazilyAddSubItem(chat_note, R.drawable.msg_edit, LocaleController.getString("ChatNoteTitle", R.string.ChatNoteTitle));
+            headerItem.lazilyAddSubItem(chat_bookmarks, R.drawable.msg_saved, LocaleController.getString("MessageBookmarks", R.string.MessageBookmarks));
             translateItem = headerItem.lazilyAddSubItem(translate, R.drawable.msg_translate, LocaleController.getString("TranslateMessage", R.string.TranslateMessage));
             updateTranslateItemVisibility();
             if (currentChat != null && !currentChat.creator && !ChatObject.hasAdminRights(currentChat)) {
@@ -9176,16 +9195,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
     }
 
     private boolean hasSelectedNoforwardsMessage() {
-        try {
-            for (SparseArrayWithTouch<MessageObject> selectedMessagesId : selectedMessagesIds) {
-                for (int j = 0; j < selectedMessagesId.size(); ++j) {
-                    MessageObject msg = selectedMessagesId.valueAt(j);
-                    if (msg != null && msg.messageOwner != null && msg.messageOwner.noforwards) {
-                        return true;
-                    }
-                }
-            }
-        } catch (Exception ignore) {}
+        // TgMod: noforwards restrictions are disabled, so nothing is ever restricted.
         return false;
     }
 
@@ -10178,7 +10188,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
     }
 
     private void showTextSelectionHint(MessageObject messageObject) {
-        if (getParentActivity() == null || getMessagesController().isChatNoForwards(messageObject.getChatId()) || messageObject.messageOwner != null && messageObject.messageOwner.noforwards) {
+        if (getParentActivity() == null) {
             return;
         }
         CharSequence text;
@@ -14267,7 +14277,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
             if (selectedMessagesIds[index].indexOfKey(messageObject.getId()) >= 0) {
                 selectedMessagesIds[index].remove(messageObject.getId());
                 if (reportType < 0) {
-                    if ((messageObject.type == MessageObject.TYPE_TEXT || messageObject.isAnimatedEmoji() || messageObject.caption != null) && !(messageObject.messageOwner != null && messageObject.messageOwner.noforwards)) {
+                    if ((messageObject.type == MessageObject.TYPE_TEXT || messageObject.isAnimatedEmoji() || messageObject.caption != null)) {
                         selectedMessagesCanCopyIds[index].remove(messageObject.getId());
                     }
                     if (!messageObject.isAnimatedEmoji() && (messageObject.isSticker() || messageObject.isAnimatedSticker()) && MessageObject.isStickerHasSet(messageObject.getDocument())) {
@@ -14303,7 +14313,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                 }
                 selectedMessagesIds[index].put(messageObject.getId(), messageObject);
                 if (reportType < 0) {
-                    if ((messageObject.type == MessageObject.TYPE_TEXT || messageObject.isAnimatedEmoji() || messageObject.caption != null) && !(messageObject.messageOwner != null && messageObject.messageOwner.noforwards)) {
+                    if ((messageObject.type == MessageObject.TYPE_TEXT || messageObject.isAnimatedEmoji() || messageObject.caption != null)) {
                         selectedMessagesCanCopyIds[index].put(messageObject.getId(), messageObject);
                     }
                     if (!messageObject.isAnimatedEmoji() && (messageObject.isSticker() || messageObject.isAnimatedSticker()) && MessageObject.isStickerHasSet(messageObject.getDocument())) {
@@ -14353,7 +14363,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                 ActionBarMenuItem deleteItem = actionBar.createActionMode().getItem(delete);
 
                 createBottomMessagesActionButtons();
-                boolean noforwards = getMessagesController().isChatNoForwards(currentChat) || hasSelectedNoforwardsMessage();
+                boolean noforwards = false; // TgMod: content protection bypass
                 if (prevCantForwardCount == 0 && cantForwardMessagesCount != 0 || prevCantForwardCount != 0 && cantForwardMessagesCount == 0) {
                     forwardButtonAnimation = new AnimatorSet();
                     ArrayList<Animator> animators = new ArrayList<>();
@@ -22688,7 +22698,9 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
         if (avatarContainer != null) {
             avatarContainer.setOccupyStatusBar(!value);
             avatarContainer.setTitleExpand(showAudioCallAsIcon);
-            avatarContainer.setLayoutParams(LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT, Gravity.TOP | Gravity.LEFT, !value ? 56 : (chatMode == MODE_PINNED ? 10 : 0), 0, 40, 0));
+            int sideMargin = !value ? 56 : (chatMode == MODE_PINNED ? 10 : 0);
+            int rightMargin = ExteraConfig.centerTitle ? sideMargin : 40;
+            avatarContainer.setLayoutParams(LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.TOP | Gravity.LEFT, sideMargin, 0, rightMargin, 0));
         }
         if (chatActivityEnterView != null) {
             chatActivityEnterView.setVisibility(!value ? View.VISIBLE : View.INVISIBLE);
@@ -23600,7 +23612,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
             allowPin = false;
         }
         allowPin = allowPin && message.getId() > 0 && (message.messageOwner.action == null || message.messageOwner.action instanceof TLRPC.TL_messageActionEmpty);
-        boolean noforwards = getMessagesController().isChatNoForwards(currentChat) || message.messageOwner.noforwards;
+        boolean noforwards = false; // TgMod: content protection bypass
         boolean allowUnpin = message.getDialogId() != mergeDialogId && allowPin && (pinnedMessageObjects.containsKey(message.getId()) || groupedMessages != null && !groupedMessages.messages.isEmpty() && pinnedMessageObjects.containsKey(groupedMessages.messages.get(0).getId()));
         boolean allowEdit = message.canEditMessage(currentChat) && !chatActivityEnterView.hasAudioToSend() && message.getDialogId() != mergeDialogId;
         if (allowEdit && groupedMessages != null) {
@@ -24075,6 +24087,11 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                                 options.add(OPTION_HISTORY);
                                 icons.add(R.drawable.msg_recent);
                             }
+                        }
+                        if (single && selectedObject != null && selectedObject.getId() > 0 && selectedObject.getDialogId() == dialog_id && chatMode != MODE_SCHEDULED && !selectedObject.isSponsored()) {
+                            items.add(LocaleController.getString("MessageBookmark", R.string.MessageBookmark));
+                            options.add(OPTION_BOOKMARK);
+                            icons.add(R.drawable.msg_saved);
                         }
                         if (allowUnpin) {
                             items.add(LocaleController.getString("UnpinMessage", R.string.UnpinMessage));
@@ -25909,6 +25926,10 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                 }
                 break;
             }
+            case OPTION_BOOKMARK: {
+                MessageBookmarkUtils.showAddDialog(getParentActivity(), currentAccount, selectedObject.getDialogId(), selectedObject, themeDelegate);
+                break;
+            }
             case OPTION_HISTORY: {
                 TLRPC.Peer peer = selectedObject.messageOwner.from_id;
                 if ((threadMessageId == 0 || isTopic) && !UserObject.isReplyUser(currentUser)) {
@@ -27689,7 +27710,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                 builder.setTitleMultipleLines(true);
             }
             final int finalTimestamp = timestamp;
-            boolean noforwards = getMessagesController().isChatNoForwards(currentChat) || (messageObject != null && messageObject.messageOwner != null && messageObject.messageOwner.noforwards);
+            boolean noforwards = false; // TgMod: content protection bypass
             builder.setItems(noforwards ? new CharSequence[] {LocaleController.getString("Open", R.string.Open)} : new CharSequence[]{LocaleController.getString("Open", R.string.Open), LocaleController.getString("Copy", R.string.Copy)}, (dialog, which) -> {
                 if (which == 0) {
                     if (str.startsWith("video?")) {
@@ -27898,7 +27919,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
         if (url == null || getParentActivity() == null) {
             return;
         }
-        boolean noforwards = getMessagesController().isChatNoForwards(currentChat) || (messageObject != null && messageObject.messageOwner != null && messageObject.messageOwner.noforwards);
+        boolean noforwards = false; // TgMod: content protection bypass
         if (url instanceof URLSpanMono) {
             if (!noforwards) {
                 ((URLSpanMono) url).copyToClipboard();

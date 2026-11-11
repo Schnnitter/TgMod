@@ -1141,6 +1141,7 @@ public class MessageObject {
         localName = name;
         localUserName = userName;
         messageText = formattedMessage;
+        applyContentProtectionBypass(message);
         messageOwner = message;
         localChannel = isChannel;
         localSupergroup = supergroup;
@@ -1175,9 +1176,18 @@ public class MessageObject {
         this(accountNum, message, null, users, chats, null, null, generateLayout, checkMediaExists, eid);
     }
 
+    private static void applyContentProtectionBypass(TLRPC.Message message) {
+        if (message != null && MessagesController.EXTERA_IGNORE_CONTENT_PROTECTION) {
+            // TgMod: treat noforwards messages as regular ones locally so that
+            // forwarding, copying and saving become available in the UI.
+            message.noforwards = false;
+        }
+    }
+
     public MessageObject(int accountNum, TLRPC.Message message, MessageObject replyToMessage, AbstractMap<Long, TLRPC.User> users, AbstractMap<Long, TLRPC.Chat> chats, LongSparseArray<TLRPC.User> sUsers, LongSparseArray<TLRPC.Chat> sChats, boolean generateLayout, boolean checkMediaExists, long eid) {
         Theme.createCommonMessageResources();
 
+        applyContentProtectionBypass(message);
         currentAccount = accountNum;
         messageOwner = message;
         replyMessageObject = replyToMessage;
@@ -5311,8 +5321,6 @@ public class MessageObject {
             return false;
         } else if (eventId != 0) {
             return false;
-        } else if (messageOwner.noforwards) {
-            return false;
         } else if (messageOwner.fwd_from != null && !isOutOwner() && messageOwner.fwd_from.saved_from_peer != null && getDialogId() == UserConfig.getInstance(currentAccount).getClientUserId()) {
             return true;
         } else if (type == TYPE_STICKER || type == TYPE_ANIMATED_STICKER || type == TYPE_EMOJIS) {
@@ -7110,7 +7118,7 @@ public class MessageObject {
     }
 
     public boolean canForwardMessage() {
-        return !(messageOwner instanceof TLRPC.TL_message_secret) && !needDrawBluredPreview() && !isLiveLocation() && type != MessageObject.TYPE_PHONE_CALL && !isSponsored() && !messageOwner.noforwards;
+        return !(messageOwner instanceof TLRPC.TL_message_secret) && !needDrawBluredPreview() && !isLiveLocation() && type != MessageObject.TYPE_PHONE_CALL && !isSponsored();
     }
 
     public boolean canEditMedia() {

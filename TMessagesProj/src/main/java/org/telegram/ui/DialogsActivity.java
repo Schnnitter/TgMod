@@ -303,6 +303,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     private ActionBarMenuItem speedItem;
     private AnimatorSet speedAnimator;
     private ActionBarMenuItem doneItem;
+    private View iosSearchHeader;
+    private ImageView iosSearchHeaderIcon;
+    private TextView iosSearchHeaderText;
+    private boolean iosSearchHeaderEnabled;
     private ProxyDrawable proxyDrawable;
     private RLottieImageView floatingButton;
     private RadialProgressView floatingProgressView;
@@ -2540,12 +2544,46 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
     private String actionBarDefaultTitle;
 
+    private void setIOSSearchHeaderVisible(boolean visible) {
+        if (!iosSearchHeaderEnabled || iosSearchHeader == null) {
+            return;
+        }
+        iosSearchHeader.setVisibility(visible ? View.VISIBLE : View.GONE);
+        actionBar.setExtraHeight(visible ? AndroidUtilities.dp(56) : 0);
+        if (fragmentView != null) {
+            fragmentView.requestLayout();
+        }
+    }
+
+    private void updateIOSSearchHeaderColors() {
+        if (iosSearchHeader == null) {
+            return;
+        }
+        iosSearchHeader.setBackground(Theme.createSimpleSelectorRoundRectDrawable(
+                AndroidUtilities.dp(12),
+                Theme.getColor(Theme.key_windowBackgroundGray),
+                Theme.getColor(Theme.key_listSelector)
+        ));
+        int textColor = Theme.getColor(Theme.key_actionBarDefaultSubtitle);
+        if (iosSearchHeaderIcon != null) {
+            iosSearchHeaderIcon.setColorFilter(textColor);
+        }
+        if (iosSearchHeaderText != null) {
+            iosSearchHeaderText.setTextColor(textColor);
+        }
+    }
+
     @Override
     public View createView(final Context context) {
         searching = false;
         searchWas = false;
         pacmanAnimation = null;
         selectedDialogs.clear();
+        iosSearchHeader = null;
+        iosSearchHeaderIcon = null;
+        iosSearchHeaderText = null;
+        iosSearchHeaderEnabled = !onlySelect && !inPreviewMode && folderId == 0 && searchString == null && initialSearchString == null && initialDialogsType == DIALOGS_TYPE_DEFAULT;
+        actionBar.setExtraHeight(iosSearchHeaderEnabled ? AndroidUtilities.dp(56) : 0);
 
         maximumVelocity = ViewConfiguration.get(context).getScaledMaximumFlingVelocity();
 
@@ -2608,6 +2646,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             @Override
             public void onSearchExpand() {
                 searching = true;
+                setIOSSearchHeaderVisible(false);
                 if (switchItem != null) {
                     switchItem.setVisibility(View.GONE);
                 }
@@ -2658,6 +2697,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             public void onSearchCollapse() {
                 searching = false;
                 searchWas = false;
+                setIOSSearchHeaderVisible(true);
                 if (viewPages[0] != null) {
                     viewPages[0].listView.setEmptyView(folderId == 0 ? viewPages[0].progressView : null);
                     if (!onlySelect) {
@@ -4209,6 +4249,43 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 layoutParams.topMargin = AndroidUtilities.statusBarHeight;
             }
             contentView.addView(actionBar, layoutParams);
+        }
+        if (iosSearchHeaderEnabled) {
+            FrameLayout searchPill = new FrameLayout(context);
+            searchPill.setContentDescription(LocaleController.getString("Search", R.string.Search));
+            searchPill.setFocusable(true);
+            searchPill.setClickable(true);
+            searchPill.setOnClickListener(v -> {
+                v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+                actionBar.openSearchField(true);
+            });
+            searchPill.setOnTouchListener((v, event) -> {
+                if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                    v.animate().scaleX(0.985f).scaleY(0.985f).setDuration(90).start();
+                } else if (event.getAction() == MotionEvent.ACTION_UP || event.getAction() == MotionEvent.ACTION_CANCEL) {
+                    v.animate().scaleX(1f).scaleY(1f).setDuration(130).start();
+                }
+                return false;
+            });
+
+            ImageView searchIcon = new ImageView(context);
+            searchIcon.setImageResource(R.drawable.ic_ab_search);
+            searchPill.addView(searchIcon, LayoutHelper.createFrame(20, 20, Gravity.LEFT | Gravity.CENTER_VERTICAL, 14, 0, 0, 0));
+            iosSearchHeaderIcon = searchIcon;
+
+            TextView searchText = new TextView(context);
+            searchText.setText(LocaleController.getString("Search", R.string.Search));
+            searchText.setTextSize(16);
+            searchText.setGravity(Gravity.CENTER_VERTICAL);
+            searchText.setSingleLine(true);
+            searchPill.addView(searchText, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT, Gravity.LEFT | Gravity.CENTER_VERTICAL, 42, 0, 8, 0));
+            iosSearchHeaderText = searchText;
+
+            FrameLayout.LayoutParams searchParams = LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 40, Gravity.TOP | Gravity.LEFT, 16, 0, 16, 0);
+            searchParams.topMargin = (actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0) + ActionBar.getCurrentActionBarHeight() + AndroidUtilities.dp(8);
+            contentView.addView(searchPill, searchParams);
+            iosSearchHeader = searchPill;
+            updateIOSSearchHeaderColors();
         }
         if (!onlySelect) {
             animatedStatusView = new DrawerProfileCell.AnimatedStatusView(context, 20, 60);
@@ -6997,22 +7074,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     alreadyAdded++;
                 }
             }
-            int maxPinnedCount;
-            if (containsFilter && filter != null) {
-                maxPinnedCount = 100 - filter.alwaysShow.size();
-            } else if (folderId != 0 || filter != null) {
-                if (getUserConfig().isPremium()) {
-                    maxPinnedCount = getMessagesController().maxFolderPinnedDialogsCountPremium;
-                } else {
-                    maxPinnedCount = getMessagesController().maxFolderPinnedDialogsCountDefault;
-                }
-            } else {
-                if (getUserConfig().isPremium()) {
-                    maxPinnedCount = getMessagesController().maxPinnedDialogsCountPremium;
-                } else {
-                    maxPinnedCount = getMessagesController().maxPinnedDialogsCountDefault;
-                }
-            }
+            int maxPinnedCount = Integer.MAX_VALUE;
             hasPinAction[0] = !(newPinnedSecretCount + pinnedSecretCount > maxPinnedCount || newPinnedCount + pinnedCount - alreadyAdded > maxPinnedCount);
         }
 
@@ -7421,18 +7483,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     alreadyAdded++;
                 }
             }
-            int maxPinnedCount;
-            if (containsFilter) {
-                maxPinnedCount = 100 - filter.alwaysShow.size();
-            } else if (folderId != 0 || filter != null) {
-                if (UserConfig.getInstance(currentAccount).isPremium()) {
-                    maxPinnedCount = getMessagesController().maxFolderPinnedDialogsCountPremium;
-                } else {
-                    maxPinnedCount = getMessagesController().maxFolderPinnedDialogsCountDefault;
-                }
-            } else {
-                maxPinnedCount = getUserConfig().isPremium() ? getMessagesController().dialogFiltersPinnedLimitPremium : getMessagesController().dialogFiltersPinnedLimitDefault;
-            }
+            int maxPinnedCount = Integer.MAX_VALUE;
             if (newPinnedSecretCount + pinnedSecretCount > maxPinnedCount || newPinnedCount + pinnedCount - alreadyAdded > maxPinnedCount) {
                 if (folderId != 0 || filter != null) {
                     AlertsCreator.showSimpleAlert(DialogsActivity.this, LocaleController.formatString("PinFolderLimitReached", R.string.PinFolderLimitReached, LocaleController.formatPluralString("Chats", maxPinnedCount)));
@@ -10010,6 +10061,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 actionBar.setPopupItemsColor(Theme.getColor(Theme.key_actionBarDefaultSubmenuItemIcon), true, true);
                 actionBar.setPopupItemsSelectorColor(Theme.getColor(Theme.key_dialogButtonSelector), true);
             }
+            updateIOSSearchHeaderColors();
             if (statusDrawable != null) {
                 updateStatus(UserConfig.getInstance(currentAccount).getCurrentUser(), false);
             }
@@ -10109,6 +10161,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         arrayList.add(new ThemeDescription(null, 0, null, null, null, cellDelegate, Theme.key_actionBarDefaultSubmenuItem));
         arrayList.add(new ThemeDescription(null, 0, null, null, null, cellDelegate, Theme.key_actionBarDefaultSubmenuItemIcon));
         arrayList.add(new ThemeDescription(null, 0, null, null, null, cellDelegate, Theme.key_dialogButtonSelector));
+        arrayList.add(new ThemeDescription(null, 0, null, null, null, cellDelegate, Theme.key_windowBackgroundGray));
+        arrayList.add(new ThemeDescription(null, 0, null, null, null, cellDelegate, Theme.key_actionBarDefaultSubtitle));
+        arrayList.add(new ThemeDescription(null, 0, null, null, null, cellDelegate, Theme.key_listSelector));
 
         if (filterTabsView != null) {
             if (actionBar.isActionModeShowed()) {

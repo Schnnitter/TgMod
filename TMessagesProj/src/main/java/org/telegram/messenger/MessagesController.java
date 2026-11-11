@@ -92,6 +92,12 @@ import com.radolyn.ayugram.messages.AyuMessagesController;
 
 public class MessagesController extends BaseController implements NotificationCenter.NotificationCenterDelegate {
 
+    // TgMod power-user features
+    /** Pinned chats are never limited below this value, regardless of Premium status. */
+    public static final int EXTERA_PINNED_DIALOGS_LIMIT = 100;
+    /** Disables noforwards / content-protection checks on the client. */
+    public static final boolean EXTERA_IGNORE_CONTENT_PROTECTION = true;
+
     public int lastKnownSessionsCount;
     private ConcurrentHashMap<Long, TLRPC.Chat> chats = new ConcurrentHashMap<>(100, 1.0f, 2);
     private ConcurrentHashMap<Integer, TLRPC.EncryptedChat> encryptedChats = new ConcurrentHashMap<>(10, 1.0f, 2);
@@ -1242,8 +1248,8 @@ public class MessagesController extends BaseController implements NotificationCe
         callConnectTimeout = mainPreferences.getInt("callConnectTimeout", 30000);
         callPacketTimeout = mainPreferences.getInt("callPacketTimeout", 10000);
         updateCheckDelay = mainPreferences.getInt("updateCheckDelay", 24 * 60 * 60);
-        maxFolderPinnedDialogsCountDefault = mainPreferences.getInt("maxFolderPinnedDialogsCountDefault", 100);
-        maxFolderPinnedDialogsCountPremium = mainPreferences.getInt("maxFolderPinnedDialogsCountPremium", 100);
+        maxFolderPinnedDialogsCountDefault = applyPinnedDialogsLimit(mainPreferences.getInt("maxFolderPinnedDialogsCountDefault", EXTERA_PINNED_DIALOGS_LIMIT));
+        maxFolderPinnedDialogsCountPremium = applyPinnedDialogsLimit(mainPreferences.getInt("maxFolderPinnedDialogsCountPremium", EXTERA_PINNED_DIALOGS_LIMIT));
         maxMessageLength = mainPreferences.getInt("maxMessageLength", 4096);
         maxCaptionLength = mainPreferences.getInt("maxCaptionLength", 1024);
         mapProvider = mainPreferences.getInt("mapProvider", 0);
@@ -1292,16 +1298,14 @@ public class MessagesController extends BaseController implements NotificationCe
         savedGifsLimitPremium = mainPreferences.getInt("savedGifsLimitPremium", 400);
         stickersFavedLimitDefault = mainPreferences.getInt("stickersFavedLimitDefault", 5);
         stickersFavedLimitPremium = mainPreferences.getInt("stickersFavedLimitPremium", 200);
-        maxPinnedDialogsCountDefault = mainPreferences.getInt("maxPinnedDialogsCountDefault", 5);
-        maxPinnedDialogsCountPremium = mainPreferences.getInt("maxPinnedDialogsCountPremium", 5);
-        maxPinnedDialogsCountDefault = mainPreferences.getInt("maxPinnedDialogsCountDefault", 5);
-        maxPinnedDialogsCountPremium = mainPreferences.getInt("maxPinnedDialogsCountPremium", 5);
+        maxPinnedDialogsCountDefault = applyPinnedDialogsLimit(mainPreferences.getInt("maxPinnedDialogsCountDefault", EXTERA_PINNED_DIALOGS_LIMIT));
+        maxPinnedDialogsCountPremium = applyPinnedDialogsLimit(mainPreferences.getInt("maxPinnedDialogsCountPremium", EXTERA_PINNED_DIALOGS_LIMIT));
         dialogFiltersLimitDefault = mainPreferences.getInt("dialogFiltersLimitDefault", 10);
         dialogFiltersLimitPremium = mainPreferences.getInt("dialogFiltersLimitPremium", 20);
         dialogFiltersChatsLimitDefault = mainPreferences.getInt("dialogFiltersChatsLimitDefault", 100);
         dialogFiltersChatsLimitPremium = mainPreferences.getInt("dialogFiltersChatsLimitPremium", 200);
-        dialogFiltersPinnedLimitDefault = mainPreferences.getInt("dialogFiltersPinnedLimitDefault", 5);
-        dialogFiltersPinnedLimitPremium = mainPreferences.getInt("dialogFiltersPinnedLimitPremium", 10);
+        dialogFiltersPinnedLimitDefault = applyPinnedDialogsLimit(mainPreferences.getInt("dialogFiltersPinnedLimitDefault", EXTERA_PINNED_DIALOGS_LIMIT));
+        dialogFiltersPinnedLimitPremium = applyPinnedDialogsLimit(mainPreferences.getInt("dialogFiltersPinnedLimitPremium", EXTERA_PINNED_DIALOGS_LIMIT));
         publicLinksLimitDefault = mainPreferences.getInt("publicLinksLimitDefault", 10);
         publicLinksLimitPremium = mainPreferences.getInt("publicLinksLimitPremium", 20);
         captionLengthLimitDefault = mainPreferences.getInt("captionLengthLimitDefault", 1024);
@@ -2804,8 +2808,9 @@ public class MessagesController extends BaseController implements NotificationCe
                 case "pinned_dialogs_count_max_default": {
                     if (value.value instanceof TLRPC.TL_jsonNumber) {
                         TLRPC.TL_jsonNumber number = (TLRPC.TL_jsonNumber) value.value;
-                        if (number.value != maxPinnedDialogsCountDefault) {
-                            maxPinnedDialogsCountDefault = (int) number.value;
+                        int newLimit = applyPinnedDialogsLimit((int) number.value);
+                        if (newLimit != maxPinnedDialogsCountDefault) {
+                            maxPinnedDialogsCountDefault = newLimit;
                             editor.putInt("maxPinnedDialogsCountDefault", maxPinnedDialogsCountDefault);
                             changed = true;
                         }
@@ -2815,8 +2820,9 @@ public class MessagesController extends BaseController implements NotificationCe
                 case "pinned_dialogs_count_max_premium": {
                     if (value.value instanceof TLRPC.TL_jsonNumber) {
                         TLRPC.TL_jsonNumber number = (TLRPC.TL_jsonNumber) value.value;
-                        if (number.value != maxPinnedDialogsCountPremium) {
-                            maxPinnedDialogsCountPremium = (int) number.value;
+                        int newLimit = applyPinnedDialogsLimit((int) number.value);
+                        if (newLimit != maxPinnedDialogsCountPremium) {
+                            maxPinnedDialogsCountPremium = newLimit;
                             editor.putInt("maxPinnedDialogsCountPremium", maxPinnedDialogsCountPremium);
                             changed = true;
                         }
@@ -2870,8 +2876,9 @@ public class MessagesController extends BaseController implements NotificationCe
                 case "dialog_filters_pinned_limit_default": {
                     if (value.value instanceof TLRPC.TL_jsonNumber) {
                         TLRPC.TL_jsonNumber number = (TLRPC.TL_jsonNumber) value.value;
-                        if (number.value != dialogFiltersPinnedLimitDefault) {
-                            dialogFiltersPinnedLimitDefault = (int) number.value;
+                        int newLimit = applyPinnedDialogsLimit((int) number.value);
+                        if (newLimit != dialogFiltersPinnedLimitDefault) {
+                            dialogFiltersPinnedLimitDefault = newLimit;
                             editor.putInt("dialogFiltersPinnedLimitDefault", dialogFiltersPinnedLimitDefault);
                             changed = true;
                         }
@@ -2881,8 +2888,9 @@ public class MessagesController extends BaseController implements NotificationCe
                 case "dialog_filters_pinned_limit_premium": {
                     if (value.value instanceof TLRPC.TL_jsonNumber) {
                         TLRPC.TL_jsonNumber number = (TLRPC.TL_jsonNumber) value.value;
-                        if (number.value != dialogFiltersPinnedLimitPremium) {
-                            dialogFiltersPinnedLimitPremium = (int) number.value;
+                        int newLimit = applyPinnedDialogsLimit((int) number.value);
+                        if (newLimit != dialogFiltersPinnedLimitPremium) {
+                            dialogFiltersPinnedLimitPremium = newLimit;
                             editor.putInt("dialogFiltersPinnedLimitPremium", dialogFiltersPinnedLimitPremium);
                             changed = true;
                         }
@@ -4116,7 +4124,14 @@ public class MessagesController extends BaseController implements NotificationCe
         });
     }
 
+    private static int applyPinnedDialogsLimit(int value) {
+        return Math.max(value, EXTERA_PINNED_DIALOGS_LIMIT);
+    }
+
     public boolean isChatNoForwards(TLRPC.Chat chat) {
+        if (EXTERA_IGNORE_CONTENT_PROTECTION) {
+            return false;
+        }
         if (chat == null) {
             return false;
         }

@@ -83,6 +83,7 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
     public boolean[] statusMadeShorter = new boolean[1];
 
     private boolean secretChatTimer;
+    private boolean centeredTitle;
 
     private int onlineCount = -1;
     private int currentConnectionState;
@@ -251,6 +252,14 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
         }
     }
 
+    public void setTitleCentered(boolean value) {
+        centeredTitle = value;
+        int gravity = value ? Gravity.CENTER : Gravity.LEFT;
+        titleTextView.setGravity(gravity);
+        subtitleTextView.setGravity(gravity);
+        requestLayout();
+    }
+
     public void setOverrideSubtitleColor(Integer overrideSubtitleColor) {
         this.overrideSubtitleColor = overrideSubtitleColor;
     }
@@ -397,7 +406,7 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         int width = MeasureSpec.getSize(widthMeasureSpec) + titleTextView.getPaddingRight();
-        int availableWidth = width - AndroidUtilities.dp((avatarImageView.getVisibility() == VISIBLE ? 54 : 0) + 16);
+        int availableWidth = width - AndroidUtilities.dp(centeredTitle ? 108 : (avatarImageView.getVisibility() == VISIBLE ? 54 : 0) + 16);
         avatarImageView.measure(MeasureSpec.makeMeasureSpec(AndroidUtilities.dp(42), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(AndroidUtilities.dp(42), MeasureSpec.EXACTLY));
         titleTextView.measure(MeasureSpec.makeMeasureSpec(availableWidth, MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(AndroidUtilities.dp(24 + 8) + titleTextView.getPaddingRight(), MeasureSpec.AT_MOST));
         subtitleTextView.measure(MeasureSpec.makeMeasureSpec(availableWidth, MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(AndroidUtilities.dp(20), MeasureSpec.AT_MOST));
@@ -410,7 +419,7 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
         }
         SimpleTextView titleTextLargerCopyView = this.titleTextLargerCopyView.get();
         if (titleTextLargerCopyView != null) {
-            int largerAvailableWidth = largerWidth - AndroidUtilities.dp((avatarImageView.getVisibility() == VISIBLE ? 54 : 0) + 16);
+            int largerAvailableWidth = largerWidth - AndroidUtilities.dp(centeredTitle ? 108 : (avatarImageView.getVisibility() == VISIBLE ? 54 : 0) + 16);
             titleTextLargerCopyView.measure(MeasureSpec.makeMeasureSpec(largerAvailableWidth, MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(AndroidUtilities.dp(24), MeasureSpec.AT_MOST));
         }
         lastWidth = width;
@@ -426,7 +435,7 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
         this.titleTextLargerCopyView.set(titleTextLargerCopyView);
         titleTextLargerCopyView.setTextColor(getThemedColor(Theme.key_actionBarDefaultTitle));
         titleTextLargerCopyView.setTextSize(18);
-        titleTextLargerCopyView.setGravity(Gravity.LEFT);
+        titleTextLargerCopyView.setGravity(centeredTitle ? Gravity.CENTER : Gravity.LEFT);
         titleTextLargerCopyView.setTypeface(AndroidUtilities.getTypeface("fonts/rmedium.ttf"));
         titleTextLargerCopyView.setLeftDrawableTopPadding(-AndroidUtilities.dp(1.3f));
         titleTextLargerCopyView.setRightDrawable(titleTextView.getRightDrawable());
@@ -451,7 +460,7 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
         subtitleTextLargerCopyView.setTextColor(getThemedColor(Theme.key_actionBarDefaultSubtitle));
         subtitleTextLargerCopyView.setTag(Theme.key_actionBarDefaultSubtitle);
         subtitleTextLargerCopyView.setTextSize(14);
-        subtitleTextLargerCopyView.setGravity(Gravity.LEFT);
+        subtitleTextLargerCopyView.setGravity(centeredTitle ? Gravity.CENTER : Gravity.LEFT);
         subtitleTextLargerCopyView.setText(subtitleTextView.getText());
         subtitleTextLargerCopyView.animate().alpha(0).setDuration(350).setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT).withEndAction(() -> {
             SimpleTextView subtitleTextLargerCopyView2 = this.subtitleTextLargerCopyView.get();
@@ -471,26 +480,31 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
         int actionBarHeight = ActionBar.getCurrentActionBarHeight();
         int viewTop = (actionBarHeight - AndroidUtilities.dp(42)) / 2 + (occupyStatusBar ? AndroidUtilities.statusBarHeight : 0);
         avatarImageView.layout(leftPadding, viewTop + 1, leftPadding + AndroidUtilities.dp(42), viewTop + 1 + AndroidUtilities.dp(42));
-        int l = leftPadding + (avatarImageView.getVisibility() == VISIBLE ? AndroidUtilities.dp( 54) : 0);
+        int l = leftPadding + (avatarImageView.getVisibility() == VISIBLE ? AndroidUtilities.dp(54) : 0);
+        int titleLeft = centeredTitle ? (getMeasuredWidth() - titleTextView.getMeasuredWidth()) / 2 : l;
         SimpleTextView titleTextLargerCopyView = this.titleTextLargerCopyView.get();
         if (subtitleTextView.getVisibility() != GONE) {
-            titleTextView.layout(l, viewTop + AndroidUtilities.dp(1.3f) - titleTextView.getPaddingTop(), l + titleTextView.getMeasuredWidth(), viewTop + titleTextView.getTextHeight() + AndroidUtilities.dp(1.3f) - titleTextView.getPaddingTop() + titleTextView.getPaddingBottom());
+            titleTextView.layout(titleLeft, viewTop + AndroidUtilities.dp(1.3f) - titleTextView.getPaddingTop(), titleLeft + titleTextView.getMeasuredWidth(), viewTop + titleTextView.getTextHeight() + AndroidUtilities.dp(1.3f) - titleTextView.getPaddingTop() + titleTextView.getPaddingBottom());
             if (titleTextLargerCopyView != null) {
-                titleTextLargerCopyView.layout(l, viewTop + AndroidUtilities.dp(1.3f), l + titleTextLargerCopyView.getMeasuredWidth(), viewTop + titleTextLargerCopyView.getTextHeight() + AndroidUtilities.dp(1.3f));
+                int largerTitleLeft = centeredTitle ? (getMeasuredWidth() - titleTextLargerCopyView.getMeasuredWidth()) / 2 : l;
+                titleTextLargerCopyView.layout(largerTitleLeft, viewTop + AndroidUtilities.dp(1.3f), largerTitleLeft + titleTextLargerCopyView.getMeasuredWidth(), viewTop + titleTextLargerCopyView.getTextHeight() + AndroidUtilities.dp(1.3f));
             }
         } else {
-            titleTextView.layout(l, viewTop + AndroidUtilities.dp(11) - titleTextView.getPaddingTop(), l + titleTextView.getMeasuredWidth(), viewTop + titleTextView.getTextHeight() + AndroidUtilities.dp(11) - titleTextView.getPaddingTop() + titleTextView.getPaddingBottom());
+            titleTextView.layout(titleLeft, viewTop + AndroidUtilities.dp(11) - titleTextView.getPaddingTop(), titleLeft + titleTextView.getMeasuredWidth(), viewTop + titleTextView.getTextHeight() + AndroidUtilities.dp(11) - titleTextView.getPaddingTop() + titleTextView.getPaddingBottom());
             if (titleTextLargerCopyView != null) {
-                titleTextLargerCopyView.layout(l, viewTop + AndroidUtilities.dp(11), l + titleTextLargerCopyView.getMeasuredWidth(), viewTop + titleTextLargerCopyView.getTextHeight() + AndroidUtilities.dp(11));
+                int largerTitleLeft = centeredTitle ? (getMeasuredWidth() - titleTextLargerCopyView.getMeasuredWidth()) / 2 : l;
+                titleTextLargerCopyView.layout(largerTitleLeft, viewTop + AndroidUtilities.dp(11), largerTitleLeft + titleTextLargerCopyView.getMeasuredWidth(), viewTop + titleTextLargerCopyView.getTextHeight() + AndroidUtilities.dp(11));
             }
         }
         if (timeItem != null) {
             timeItem.layout(leftPadding + AndroidUtilities.dp(16), viewTop + AndroidUtilities.dp(15), leftPadding + AndroidUtilities.dp(16 + 34), viewTop + AndroidUtilities.dp(15 + 34));
         }
-        subtitleTextView.layout(l, viewTop + AndroidUtilities.dp(24), l + subtitleTextView.getMeasuredWidth(), viewTop + subtitleTextView.getTextHeight() + AndroidUtilities.dp(24));
+        int subtitleLeft = centeredTitle ? (getMeasuredWidth() - subtitleTextView.getMeasuredWidth()) / 2 : l;
+        subtitleTextView.layout(subtitleLeft, viewTop + AndroidUtilities.dp(24), subtitleLeft + subtitleTextView.getMeasuredWidth(), viewTop + subtitleTextView.getTextHeight() + AndroidUtilities.dp(24));
         SimpleTextView subtitleTextLargerCopyView = this.subtitleTextLargerCopyView.get();
         if (subtitleTextLargerCopyView != null) {
-            subtitleTextLargerCopyView.layout(l, viewTop + AndroidUtilities.dp(24), l + subtitleTextLargerCopyView.getMeasuredWidth(), viewTop + subtitleTextLargerCopyView.getTextHeight() + AndroidUtilities.dp(24));
+            int largerSubtitleLeft = centeredTitle ? (getMeasuredWidth() - subtitleTextLargerCopyView.getMeasuredWidth()) / 2 : l;
+            subtitleTextLargerCopyView.layout(largerSubtitleLeft, viewTop + AndroidUtilities.dp(24), largerSubtitleLeft + subtitleTextLargerCopyView.getMeasuredWidth(), viewTop + subtitleTextLargerCopyView.getTextHeight() + AndroidUtilities.dp(24));
         }
     }
 
