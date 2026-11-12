@@ -56,11 +56,11 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build Debug APK with Gradle
-        run: ./gradlew assembleAfatDebug
+        run: ./gradlew :TMessagesProj:assembleDebug
 
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: TgMod-Debug-APK
-          path: TMessagesProj/build/outputs/apk/afat/debug/*.apk
+          path: TMessagesProj/build/outputs/apk/debug/*.apk
           
