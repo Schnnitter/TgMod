@@ -12,12 +12,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: android-build-${{ github.ref }}
+  group: tgmod-build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
-    name: Build Android APK
+    name: Build TgMod Android APK
     runs-on: ubuntu-latest
     timeout-minutes: 180
 
@@ -26,7 +26,6 @@ jobs:
       CCACHE_NOHASHDIR: "true"
       CCACHE_MAXSIZE: "10G"
       CCACHE_HARDLINK: "true"
-      GRADLE_OPTS: "-Dorg.gradle.daemon=false"
 
     steps:
       - name: Checkout repository
@@ -34,7 +33,7 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Setup Java
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -44,16 +43,20 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK packages
+      - name: Accept licenses and install SDK
         run: |
+          set +o pipefail
           yes | sdkmanager --licenses
-          sdkmanager \
+          set -o pipefail
+
+          sdkmanager --install \
             "platform-tools" \
             "platforms;android-33" \
-            "build-tools;33.0.2" \
-            "cmdline-tools;latest"
+            "build-tools;33.0.1" \
+            "ndk;21.4.7075529" \
+            "cmake;3.10.2"
 
-      - name: Prepare build environment
+      - name: Install build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -68,12 +71,30 @@ jobs:
       - name: Configure API keys
         run: |
           cat > API_KEYS <<'EOF'
-          APP_ID = 6
-          APP_HASH = "eb06d4abfb49dc3eeb1aeb98ae0f581e"
-          MAPS_V2_API = 0
+          APP_ID=6
+          APP_HASH="eb06d4abfb49dc3eeb1aeb98ae0f581e"
+          MAPS_V2_API=0
+          SIGNING_KEY_STORE_PASSWORD=TgModBuildOnly2026!
+          SIGNING_KEY_ALIAS=tgmod
+          SIGNING_KEY_PASSWORD=TgModBuildOnly2026!
           EOF
 
-      - name: Create Google Services configuration
+      - name: Create signing keystore
+        run: |
+          mkdir -p config
+
+          keytool -genkeypair \
+            -keystore config/extera.jks \
+            -storepass 'TgModBuildOnly2026!' \
+            -keypass 'TgModBuildOnly2026!' \
+            -alias tgmod \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=TgMod, OU=Android, O=TgMod, C=US" \
+            -noprompt
+
+      - name: Configure Google Services
         run: |
           mkdir -p TMessagesProj
 
@@ -81,14 +102,14 @@ jobs:
           {
             "project_info": {
               "project_number": "123456789",
-              "project_id": "tgmod-dummy"
+              "project_id": "tgmod-build"
             },
             "client": [
               {
                 "client_info": {
-                  "mobilesdk_app_id": "1:123456789:android:123456",
+                  "mobilesdk_app_id": "1:123456789:android:1234567890abcdef",
                   "android_client_info": {
-                    "package_name": "org.telegram.messenger"
+                    "package_name": "com.radolyn.ayugram"
                   }
                 },
                 "api_key": [
@@ -107,67 +128,21 @@ jobs:
           }
           EOF
 
-          echo "Google Services configuration created."
-          test -f TMessagesProj/google-services.json
+      - name: Grant Gradle permissions
+        run: chmod +x gradlew
 
-      - name: Verify build configuration
-        run: |
-          echo "Repository: $GITHUB_REPOSITORY"
-          echo "Branch: $GITHUB_REF_NAME"
-          echo "Gradle version:"
-          chmod +x gradlew
-          ./gradlew --version
-
-          echo "Available assemble tasks:"
-          ./gradlew :TMessagesProj:tasks --all | grep -i assemble || true
-
-          echo "Google Services file:"
-          ls -l TMessagesProj/google-services.json
-
-      - name: Build Debug APK
+      - name: Build Beta Debug APK
         run: |
           ./gradlew \
             --no-configuration-cache \
-            --stacktrace \
             --no-daemon \
-            assembleAfatDebug
-
-      - name: Find generated APK
-        if: success()
-        run: |
-          echo "Searching for APK files..."
-
-          find . -type f -name "*.apk" \
-            -not -path "*/build/intermediates/*" \
-            -print
-
-          mkdir -p artifacts
-
-          find TMessagesProj/build/outputs/apk \
-            -type f -name "*.apk" \
-            -exec cp {} artifacts/ \;
-
-          echo "Generated APK files:"
-          ls -lh artifacts/
-
-          test -n "$(find artifacts -name '*.apk' -print -quit)"
+            :TMessagesProj:assembleBetaDebug
 
       - name: Upload APK
-        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: TgMod-Debug-APK
-          path: artifacts/*.apk
+          path: TMessagesProj/build/outputs/apk/beta/debug/*.apk
           if-no-files-found: error
-          retention-days: 7
-
-      - name: Build diagnostics
-        if: failure()
-        run: |
-          echo "BUILD FAILED"
-          echo "Checking generated files..."
-
-          find TMessagesProj/build -type f \
-            \( -name "*.log" -o -name "*.txt" \) \
-            2>/dev/null | head -50 || true
-            
+          retention-days: 14
+          
