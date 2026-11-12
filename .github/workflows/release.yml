@@ -1,5 +1,5 @@
 
-name: Build APK
+name: Build TgMod APK
 
 on:
   workflow_dispatch:
@@ -21,18 +21,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
 
-    env:
-      CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
-      CCACHE_NOHASHDIR: "true"
-      CCACHE_MAXSIZE: "10G"
-      CCACHE_HARDLINK: "true"
-
     steps:
+      # 1. Получаем репозиторий вместе с submodules
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
+      # 2. Устанавливаем Java 17
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
@@ -40,69 +36,107 @@ jobs:
           java-version: "17"
           cache: gradle
 
+      # 3. Устанавливаем Android SDK
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools"
+          accept-android-sdk-licenses: true
+          log-accepted-android-sdk-licenses: false
 
-      - name: Accept licenses and install SDK
+      # 4. Устанавливаем версии SDK, требуемые проектом
+      - name: Install Android build packages
         run: |
-          set +o pipefail
-          yes | sdkmanager --licenses
-          set -o pipefail
-
           sdkmanager --install \
             "platform-tools" \
             "platforms;android-33" \
             "build-tools;33.0.1" \
             "ndk;21.4.7075529" \
-            "cmake;3.10.2"
+            "cmake;3.10.2.4988404"
 
+      # 5. Устанавливаем системные зависимости
       - name: Install build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             bison \
+            flex \
             gcc \
             g++ \
             make \
             curl \
-            ninja-build \
-            ccache
+            ninja-build
 
+      # 6. Проверяем инструменты сборки
+      - name: Verify build environment
+        run: |
+          java -version
+          sdkmanager --version
+          cmake --version
+          ninja --version
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+
+          test -d "$ANDROID_HOME/ndk/21.4.7075529"
+          test -d "$ANDROID_HOME/cmake/3.10.2.4988404"
+          test -d "$ANDROID_HOME/platforms/android-33"
+          test -d "$ANDROID_HOME/build-tools/33.0.1"
+
+      # 7. Создаём API_KEYS для Gradle
       - name: Configure API keys
         run: |
           cat > API_KEYS <<'EOF'
           APP_ID=6
           APP_HASH="eb06d4abfb49dc3eeb1aeb98ae0f581e"
           MAPS_V2_API=0
-          SIGNING_KEY_STORE_PASSWORD=TgModBuildOnly2026!
-          SIGNING_KEY_ALIAS=tgmod
-          SIGNING_KEY_PASSWORD=TgModBuildOnly2026!
           EOF
 
-      - name: Create signing keystore
+      # 8. Создаём временный ключ подписи
+      - name: Create debug signing keystore
         run: |
-          mkdir -p config
+          set -e
+
+          mkdir -p TMessagesProj/config
+
+          KEYSTORE_PASSWORD="$(openssl rand -hex 24)"
+          KEY_ALIAS="tgmod-ci"
+
+          rm -f TMessagesProj/config/extera.jks
 
           keytool -genkeypair \
-            -keystore config/extera.jks \
-            -storepass 'TgModBuildOnly2026!' \
-            -keypass 'TgModBuildOnly2026!' \
-            -alias tgmod \
+            -keystore TMessagesProj/config/extera.jks \
+            -storepass "$KEYSTORE_PASSWORD" \
+            -keypass "$KEYSTORE_PASSWORD" \
+            -alias "$KEY_ALIAS" \
             -keyalg RSA \
             -keysize 2048 \
             -validity 10000 \
             -dname "CN=TgMod, OU=Android, O=TgMod, C=US" \
             -noprompt
 
+          {
+            echo "SIGNING_KEY_STORE_PASSWORD=$KEYSTORE_PASSWORD"
+            echo "SIGNING_KEY_ALIAS=$KEY_ALIAS"
+            echo "SIGNING_KEY_PASSWORD=$KEYSTORE_PASSWORD"
+          } >> API_KEYS
+
+      # 9. Настраиваем Google Services
       - name: Configure Google Services
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
           mkdir -p TMessagesProj
 
-          cat > TMessagesProj/google-services.json <<'EOF'
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" \
+              > TMessagesProj/google-services.json
+            echo "Using configured Google Services JSON"
+          else
+            cat > TMessagesProj/google-services.json <<'EOF'
           {
             "project_info": {
               "project_number": "123456789",
-              "project_id": "tgmod-build"
+              "project_id": "tgmod-ci"
             },
             "client": [
               {
@@ -116,32 +150,65 @@ jobs:
                   {
                     "current_key": "dummy-api-key"
                   }
-                ],
-                "services": {
-                  "appinvite_service": {
-                    "other_platform_oauth_client": []
-                  }
-                }
+                ]
               }
             ],
             "configuration_version": "1"
           }
           EOF
+            echo "Using placeholder Google Services configuration"
+          fi
 
+      # 10. Проверяем обязательные файлы
+      - name: Verify project configuration
+        run: |
+          set -e
+
+          test -f API_KEYS
+          test -f TMessagesProj/google-services.json
+          test -f TMessagesProj/config/extera.jks
+          test -f TMessagesProj/build.gradle
+          test -f gradlew
+
+          echo "Project configuration is ready"
+
+      # 11. Даём Gradle разрешение на запуск
       - name: Grant Gradle permissions
-        run: chmod +x gradlew
+        run: chmod +x ./gradlew
 
+      # 12. Собираем Beta Debug APK
       - name: Build Beta Debug APK
         run: |
           ./gradlew \
-            --no-configuration-cache \
             --no-daemon \
+            --no-configuration-cache \
+            --stacktrace \
             :TMessagesProj:assembleBetaDebug
 
+      # 13. Проверяем результат сборки
+      - name: Verify APK
+        run: |
+          set -e
+
+          APK_DIR="TMessagesProj/build/outputs/apk/beta/debug"
+
+          if [ ! -d "$APK_DIR" ]; then
+            echo "APK output directory does not exist"
+            exit 1
+          fi
+
+          find "$APK_DIR" -maxdepth 1 -type f -name "*.apk" -print
+
+          if ! find "$APK_DIR" -maxdepth 1 -type f -name "*.apk" | grep -q .; then
+            echo "APK was not generated"
+            exit 1
+          fi
+
+      # 14. Загружаем APK в GitHub Actions
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: TgMod-Debug-APK
+          name: TgMod-Beta-Debug-APK
           path: TMessagesProj/build/outputs/apk/beta/debug/*.apk
           if-no-files-found: error
           retention-days: 14
