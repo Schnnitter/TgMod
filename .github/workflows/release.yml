@@ -1,66 +1,173 @@
+
 name: Build APK
 
-on: 
+on:
   workflow_dispatch:
   push:
-    branches: [ rewrite, main ]
+    branches:
+      - rewrite
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
+    name: Build Android APK
     runs-on: ubuntu-latest
+    timeout-minutes: 180
+
     env:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
       CCACHE_MAXSIZE: "10G"
       CCACHE_HARDLINK: "true"
+      GRADLE_OPTS: "-Dorg.gradle.daemon=false"
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - uses: DamianReeves/write-file-action@master
         with:
-          path: ./API_KEYS
-          contents: |
-            APP_ID = 6
-            APP_HASH = "eb06d4abfb49dc3eeb1aeb98ae0f581e"
-            MAPS_V2_API = 0
-          write-mode: overwrite
-
-      - name: Update packages
-        run: sudo apt-get update
+          submodules: recursive
 
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
-          java-version: '17'
-          cache: 'gradle'
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
 
-      - name: Setup Android SDK Tools
+      - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-        with:
-          packages: >-
-            platforms;android-33
-            build-tools;33.0.2
-            cmdline-tools;latest
 
-      - name: Prepare Environment
+      - name: Install Android SDK packages
         run: |
-          sudo apt-get remove -y '^llvm-.*' 'php.*' '^mongodb-.*' '^mysql-.*' azure-cli firefox mono-devel libgl1-mesa-dri
-          sudo apt-get autoremove -y
-          sudo apt-get clean
-          sudo rm -rf /usr/share/dotnet/ /usr/local/graalvm/ /usr/local/.ghcup/ /usr/local/share/powershell /usr/local/share/chromium /usr/local/lib/node_modules
-          sudo apt-get install -y bison gcc make curl ninja-build ccache
+          yes | sdkmanager --licenses
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-33" \
+            "build-tools;33.0.2" \
+            "cmdline-tools;latest"
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+      - name: Prepare build environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            bison \
+            gcc \
+            g++ \
+            make \
+            curl \
+            ninja-build \
+            ccache
 
-      - name: Build Debug APK with Gradle
-        run: ./gradlew :TMessagesProj:assembleDebug
+      - name: Configure API keys
+        run: |
+          cat > API_KEYS <<'EOF'
+          APP_ID = 6
+          APP_HASH = "eb06d4abfb49dc3eeb1aeb98ae0f581e"
+          MAPS_V2_API = 0
+          EOF
 
-      - name: Upload
+      - name: Create Google Services configuration
+        run: |
+          mkdir -p TMessagesProj
+
+          cat > TMessagesProj/google-services.json <<'EOF'
+          {
+            "project_info": {
+              "project_number": "123456789",
+              "project_id": "tgmod-dummy"
+            },
+            "client": [
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:123456789:android:123456",
+                  "android_client_info": {
+                    "package_name": "org.telegram.messenger"
+                  }
+                },
+                "api_key": [
+                  {
+                    "current_key": "dummy-api-key"
+                  }
+                ],
+                "services": {
+                  "appinvite_service": {
+                    "other_platform_oauth_client": []
+                  }
+                }
+              }
+            ],
+            "configuration_version": "1"
+          }
+          EOF
+
+          echo "Google Services configuration created."
+          test -f TMessagesProj/google-services.json
+
+      - name: Verify build configuration
+        run: |
+          echo "Repository: $GITHUB_REPOSITORY"
+          echo "Branch: $GITHUB_REF_NAME"
+          echo "Gradle version:"
+          chmod +x gradlew
+          ./gradlew --version
+
+          echo "Available assemble tasks:"
+          ./gradlew :TMessagesProj:tasks --all | grep -i assemble || true
+
+          echo "Google Services file:"
+          ls -l TMessagesProj/google-services.json
+
+      - name: Build Debug APK
+        run: |
+          ./gradlew \
+            --no-configuration-cache \
+            --stacktrace \
+            --no-daemon \
+            assembleAfatDebug
+
+      - name: Find generated APK
+        if: success()
+        run: |
+          echo "Searching for APK files..."
+
+          find . -type f -name "*.apk" \
+            -not -path "*/build/intermediates/*" \
+            -print
+
+          mkdir -p artifacts
+
+          find TMessagesProj/build/outputs/apk \
+            -type f -name "*.apk" \
+            -exec cp {} artifacts/ \;
+
+          echo "Generated APK files:"
+          ls -lh artifacts/
+
+          test -n "$(find artifacts -name '*.apk' -print -quit)"
+
+      - name: Upload APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: TgMod-Debug-APK
-          path: TMessagesProj/build/outputs/apk/debug/*.apk
-          
+          path: artifacts/*.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Build diagnostics
+        if: failure()
+        run: |
+          echo "BUILD FAILED"
+          echo "Checking generated files..."
+
+          find TMessagesProj/build -type f \
+            \( -name "*.log" -o -name "*.txt" \) \
+            2>/dev/null | head -50 || true
+            
